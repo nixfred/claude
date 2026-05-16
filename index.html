@@ -229,7 +229,7 @@
   <span id="ctxmeter">
     <span style="color:var(--faint)">context</span>
     <span id="ctxbar"><span id="ctxfill"></span></span>
-    <span id="ctxtxt">8.0k / 200k</span>
+    <span id="ctxtxt">8k / 200k</span>
   </span>
 </div>
 
@@ -349,12 +349,16 @@ function sleep(ms){
   });
 }
 
-/* ---- context meter flavor ---- */
-let ctxTokens=8000;
-function bumpCtx(n){
-  ctxTokens=Math.min(199000, ctxTokens+n);
-  ctxfill.style.width=(ctxTokens/200000*100).toFixed(1)+'%';
-  ctxtxt.textContent=(ctxTokens/1000).toFixed(1)+'k / 200k';
+/* ---- context meter — fills with script progress, lands on a clean 100%
+   at the final message as a quiet signal that it really is over ---- */
+const CTX_START=8000, CTX_MAX=200000;
+function bumpCtx(){}   /* legacy no-op: the meter is progress-driven via paintCtx() */
+function paintCtx(){
+  const total=SCRIPT.length||1;
+  const frac=Math.min(1, idx/total);
+  const t=Math.round(CTX_START+(CTX_MAX-CTX_START)*frac);
+  ctxfill.style.width=(t/CTX_MAX*100).toFixed(1)+'%';
+  ctxtxt.textContent=Math.round(t/1000)+'k / 200k';
 }
 
 /* ---- DOM helpers ---- */
@@ -920,10 +924,10 @@ function seek(sec){
 
   // wipe + rebuild
   wrap.innerHTML='<div class="scrollback">· · ·  earlier in this conversation: 2,847 messages  · · ·</div>';
-  ctxTokens=8000; bumpCtx(0);
   const start=SEC_START[sec];
   for(let i=0;i<start;i++) renderEvent(SCRIPT[i],true,token);
   idx=start; curSection=sec;
+  paintCtx();
   transcript.scrollTop=transcript.scrollHeight;
   flash('▸ '+SECTIONS[sec]);
   run(token);
@@ -939,6 +943,7 @@ async function run(token){
     await renderEvent(ev,false,token);
     if(token!==playToken) return;
     idx++;
+    paintCtx();
   }
   if(token===playToken){
     // endgame: Larry never stops typing
