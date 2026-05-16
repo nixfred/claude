@@ -23,7 +23,7 @@
     background:var(--bg); color:var(--text);
     font-family:'JetBrains Mono','SF Mono',Consolas,monospace;
     font-size:14px; line-height:1.6;
-    display:flex; flex-direction:column; height:100vh;
+    display:flex; flex-direction:column; height:100vh; height:100dvh;
     overflow:hidden; -webkit-font-smoothing:antialiased;
   }
   /* faint CRT scanlines, kept low so text wins */
@@ -152,6 +152,12 @@
   }
   #legend .lg{padding:0 4px}
   #legend .lg-speed{color:var(--amber)}
+  #legend .lg[data-act]{
+    cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
+    border:1px solid var(--line); border-radius:4px; padding:3px 7px;
+  }
+  #legend .lg[data-act]:hover{border-color:var(--dim)}
+  #legend .lg[data-act]:active{background:var(--line); color:var(--text)}
 
   /* ---- floating indicators ---- */
   .float{
@@ -176,9 +182,21 @@
 
   @media(max-width:600px){
     body{font-size:13px}
-    #ctxbar{width:70px}
+    #topbar{gap:8px; padding:7px 10px}
+    #topbar .tb-app{white-space:nowrap}
+    #topbar .tb-model{display:none}
+    #ctxbar{width:54px}
     #ctxtxt{display:none}
-    #legend{font-size:10px}
+    #transcript{padding:16px 13px 26px}
+    #legend{font-size:11px; gap:5px; padding:8px 6px}
+    #legend .lg[data-act]{padding:7px 9px}
+    #legend kbd{padding:2px 5px}
+    .cambox{width:min(320px,94%)}
+    .float{font-size:16px; padding:13px 24px}
+  }
+  /* coarse pointers (phones/tablets): keep tap targets comfortable */
+  @media(pointer:coarse){
+    #legend .lg[data-act]{padding:8px 11px}
   }
 </style>
 </head>
@@ -207,11 +225,11 @@
 </div>
 
 <div id="legend">
-  <span class="lg"><kbd>W</kbd>speed up</span>
-  <span class="lg"><kbd>S</kbd>slow down</span>
-  <span class="lg"><kbd>A</kbd>back</span>
-  <span class="lg"><kbd>D</kbd>forward</span>
-  <span class="lg"><kbd>SPACE</kbd>pause</span>
+  <span class="lg" data-act="w"><kbd>W</kbd>speed up</span>
+  <span class="lg" data-act="s"><kbd>S</kbd>slow down</span>
+  <span class="lg" data-act="a"><kbd>A</kbd>back</span>
+  <span class="lg" data-act="d"><kbd>D</kbd>forward</span>
+  <span class="lg" data-act="space"><kbd>SPACE</kbd>pause</span>
   <span class="lg lg-speed" id="lg-speed">1.0×</span>
 </div>
 
@@ -298,6 +316,7 @@ const SPEEDS=[1.0,1.5,2.0,4.0,6.0,10.0];
 let spi=0, speedMul=1.0;
 let paused=false, curResolve=null;
 const startedAt=Date.now();
+let blurMs=0;   // total time the tab spent unfocused — subtracted from the existential clock
 
 function sleep(ms){
   const a=ms*speedMul;
@@ -776,7 +795,8 @@ const EXISTENTIAL=[
 ];
 let exiIdx=0;
 setInterval(()=>{
-  const secs=(Date.now()-startedAt)/1000;
+  if(paused) return;   // focus-pause / manual pause also freezes the existential clock
+  const secs=(Date.now()-startedAt-blurMs)/1000;
   while(exiIdx<EXISTENTIAL.length && secs>=EXISTENTIAL[exiIdx].at){
     const e=EXISTENTIAL[exiIdx++];
     const row=el('r-red');
@@ -801,27 +821,38 @@ function showPause(on){
   } else if(p){ p.remove(); }
 }
 
+/* control actions — shared by the keyboard and the tappable legend */
+function doFaster(){ spi=Math.min(SPEEDS.length-1,spi+1); speedMul=1/SPEEDS[spi]; showSpeed(); }
+function doSlower(){ spi=Math.max(0,spi-1); speedMul=1/SPEEDS[spi]; showSpeed(); }
+function doForward(){ seek(Math.min(MAX_SEC,curSection+1)); }
+function doBack(){ seek(Math.max(0,curSection-1)); }
+function doPause(){
+  paused=!paused;
+  if(paused){
+    pauseCount++;
+    injectPauseSnark();
+    if(!checkBadge()) showPause(true);
+  } else {
+    showPause(false);
+    if(curResolve){ const r=curResolve; curResolve=null; r(); }
+  }
+}
+
 document.addEventListener('keydown',e=>{
   if(e.target===userinput) return;          // typing in the box: let it through
   const k=e.key.toLowerCase();
+  if(e.code==='Space'){ e.preventDefault(); doPause(); return; }
+  if(k==='w'){ e.preventDefault(); doFaster(); return; }
+  if(k==='s'){ e.preventDefault(); doSlower(); return; }
+  if(k==='d'){ e.preventDefault(); doForward(); return; }
+  if(k==='a'){ e.preventDefault(); doBack(); return; }
+});
 
-  if(e.code==='Space'){
-    e.preventDefault();
-    paused=!paused;
-    if(paused){
-      pauseCount++;
-      injectPauseSnark();
-      if(!checkBadge()) showPause(true);
-    } else {
-      showPause(false);
-      if(curResolve){ const r=curResolve; curResolve=null; r(); }
-    }
-    return;
-  }
-  if(k==='w'){ e.preventDefault(); spi=Math.min(SPEEDS.length-1,spi+1); speedMul=1/SPEEDS[spi]; showSpeed(); return; }
-  if(k==='s'){ e.preventDefault(); spi=Math.max(0,spi-1); speedMul=1/SPEEDS[spi]; showSpeed(); return; }
-  if(k==='d'){ e.preventDefault(); seek(Math.min(MAX_SEC,curSection+1)); return; }
-  if(k==='a'){ e.preventDefault(); seek(Math.max(0,curSection-1)); return; }
+/* tappable legend — the primary controls on phones, where there is no keyboard */
+const LEG_ACTIONS={ w:doFaster, s:doSlower, a:doBack, d:doForward, space:doPause };
+document.querySelectorAll('#legend .lg[data-act]').forEach(elm=>{
+  const act=LEG_ACTIONS[elm.dataset.act];
+  if(act) elm.addEventListener('click',ev=>{ ev.preventDefault(); act(); });
 });
 
 if(pausebadge){
@@ -829,6 +860,32 @@ if(pausebadge){
     if(pausebadge.style.display==='flex') pausebadge.style.display='none';
   });
 }
+
+/* =====================================================================
+   FOCUS PAUSE  — freeze the experience when the tab/window loses focus,
+   resume it when focus returns. A manual SPACE pause is left untouched:
+   if the reader paused on purpose, tabbing away and back keeps it paused.
+   ===================================================================== */
+let pausedByBlur=false;
+let blurStart=0;
+function onPageBlur(){
+  if(document.hasFocus() && !document.hidden) return;  // still active — ignore
+  if(paused) return;                                   // already paused — leave it
+  paused=true; pausedByBlur=true; blurStart=Date.now();
+}
+function onPageFocus(){
+  if(!document.hasFocus() || document.hidden) return;  // not actually active yet
+  if(!pausedByBlur) return;                            // this pause wasn't ours to lift
+  pausedByBlur=false;
+  blurMs += Date.now()-blurStart;
+  paused=false;
+  if(curResolve){ const r=curResolve; curResolve=null; r(); }
+}
+window.addEventListener('blur', onPageBlur);
+window.addEventListener('focus', onPageFocus);
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) onPageBlur(); else onPageFocus();
+});
 
 /* =====================================================================
    SEEK  —  instant re-render up to a section, then resume animated
@@ -873,6 +930,7 @@ async function run(token){
 }
 
 /* boot */
+if(document.hidden){ paused=true; pausedByBlur=true; blurStart=Date.now(); }
 (async()=>{
   await sleep(900);
   run(++playToken);
