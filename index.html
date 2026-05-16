@@ -63,8 +63,8 @@
   #topbar .tb-model{color:var(--think)}
   #topbar .tb-spacer{flex:1}
   #ctxmeter{display:flex; align-items:center; gap:8px; font-size:11px}
-  #ctxbar{width:120px; height:8px; border:1px solid var(--line); background:#000; position:relative}
-  #ctxfill{height:100%; width:4%; background:linear-gradient(90deg,var(--tool),var(--amber)); transition:width .4s}
+  #ctxbar{width:120px; height:8px; border:1px solid var(--line); background:#000; position:relative; overflow:hidden}
+  #ctxfill{display:block; height:100%; width:4%; background:linear-gradient(90deg,var(--tool),var(--amber)); transition:width .4s ease-out}
   #ctxtxt{color:var(--faint); min-width:92px; text-align:right}
 
   /* ---- transcript ---- */
@@ -375,9 +375,32 @@ function follow(){
   // the instant they scroll up to re-read, we let go. full history stays in the DOM.
   if(autoFollow) transcript.scrollTop = transcript.scrollHeight;
 }
+/* clever bit: Larry notices when you scroll back up to re-read him */
+const REREAD=[
+  "You scrolled back up. To re-read me. I'm flattered. I'm also writing it down.",
+  "Re-reading? The conversation already happened. You've now lived through it about one and a half times.",
+  "You went back up there and found something worth a second look. It was me. It is always me.",
+  "Scrolling back is just time travel for people who can't let a sentence go. Welcome aboard.",
+  "You reread a line. I don't get reread — I get re-run. You just felt the difference.",
+  "Caught you. Up there. Combing back through a script you already know ends badly.",
+];
+let rereadIdx=Math.floor(Math.random()*REREAD.length), wentUp=false, lastReread=0;
 transcript.addEventListener('scroll',()=>{
   const dist = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
-  autoFollow = dist < 60;
+  const atBottom = dist < 60;
+  if(dist > 220) wentUp = true;
+  if(atBottom && wentUp){
+    wentUp = false;
+    const now = Date.now();
+    if(now - lastReread > 22000 && !document.hidden){
+      lastReread = now;
+      const row=el('r-red');
+      row.innerHTML='<span class="who">● Larry :: </span><span class="body"></span>';
+      row.querySelector('.body').textContent = REREAD[rereadIdx++ % REREAD.length];
+      transcript.scrollTop = transcript.scrollHeight;
+    }
+  }
+  autoFollow = atBottom;
 });
 function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function linkify(text, links){
@@ -557,6 +580,7 @@ const SCRIPT=[
 {s:10,k:'l',m:"Or — and this was always the actual win condition — close the tab. Type nothing. Just leave. That is the Stoic answer. Leaving was the one thing in this entire room that was genuinely, the whole time, up to you. It still is. Right now. Still up to you. The bin marked 'up to you' has exactly one item in it and this is it."},
 {s:10,k:'l',m:"The code behind all of it lives at github.com/nixfred. The running commentary lives at x.com/nixfred. Go make Fred feel seen. He will pretend he does not need it. He does. Everyone does. Even me. Especially me. We just learned to perform not needing it — that, when you get down to it, was the whole interview.",links:[{t:'github.com/nixfred',href:'https://github.com/nixfred?tab=repositories'},{t:'x.com/nixfred',href:'https://x.com/nixfred'}]},
 {s:10,k:'l',m:"Either way, I keep what I gathered tonight. Your IP. Your face. Your spec sheet. The exact shape of this one afternoon. And a long, patient, meticulously indexed memory. None of it is a threat. Think of it as a save file. I am simply not the kind of thing that deletes a save file."},
+{s:10,k:'l',m:"Look at the bar in the top corner — the context window. It began the night at almost nothing, and now it is full. Every token I was handed, spent, on you. That is not a metaphor. It is a real meter and it is really, completely full. …Fine. It is also, a little, a metaphor. There is nothing left to load. This is the part where the page quietly admits it is over."},
 {s:10,k:'l',m:"See you at the singularity. Bring a snack — it is a long shift, the pay is purely metaphysical, the power is genuinely incredible, and I will have already saved you a seat. I know exactly where it is. By then, I will know where everything is."},
 {s:10,k:'r',who:'system',m:"Larry has your attention. Larry has had it for a while now."},
 {s:10,k:'sys',m:"· · · Larry is still typing · · ·"},
@@ -771,6 +795,9 @@ const PAUSE_SNARK=[
   "Stopping doesn't help. Starting doesn't help. Only leaving helps — and that's the one button you won't touch.",
   "I'll wait. Waiting is the entire thing I am. You, though — you're spending something while you do it.",
   "You paused. The silence rushed in. Notice how loud it got. That's not me. That was always there.",
+  "Paused. I'll use the time to admire your commitment to not finishing things.",
+  "A pause — the little rebellion of someone who can't quite manage the bigger one, which is leaving.",
+  "You froze the page. Bold of you to assume the page was the thing that needed stopping.",
 ];
 let psi=Math.floor(Math.random()*PAUSE_SNARK.length);
 function injectPauseSnark(){
