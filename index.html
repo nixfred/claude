@@ -80,6 +80,20 @@
 
   .scrollback{color:var(--faint); text-align:center; font-size:12px; margin:4px 0 18px; letter-spacing:1px}
 
+  /* ---- Claude Code opening banner ---- */
+  .bootbox{
+    border:1px solid #30303f; border-radius:8px; background:#0b0f16;
+    padding:13px 17px; margin:2px 0 14px; max-width:580px;
+    animation:fade .35s ease-out;
+  }
+  .boot-welcome{color:#e6edf3; font-weight:700}
+  .boot-star{color:#d97757}
+  .boot-gap{height:9px}
+  .boot-dim{color:var(--dim); font-size:12px}
+  .boot-cwd{color:var(--tool); font-size:12px}
+  .boot-resume{color:var(--faint); font-size:12px; letter-spacing:.4px; margin:2px 0 18px}
+  .boot-resume .who{color:var(--dim)}
+
   .r-user .who{color:var(--user); font-weight:700}
   .r-user .body{color:#e6edf3}
   .r-larry .who{color:var(--larry); font-weight:700}
@@ -233,9 +247,7 @@
   </span>
 </div>
 
-<div id="transcript"><div class="wrap" id="wrap">
-  <div class="scrollback">· · ·  earlier in this conversation: 2,847 messages  · · ·</div>
-</div></div>
+<div id="transcript"><div class="wrap" id="wrap"></div></div>
 
 <div id="composer" class="locked">
   <span id="prompt-glyph">&gt;</span>
@@ -941,6 +953,7 @@ document.addEventListener('visibilitychange', ()=>{
    SEEK  —  instant re-render up to a section, then resume animated
    ===================================================================== */
 function seek(sec){
+  if(booting) return;          // controls are inert until the opening sequence finishes
   playToken++;
   const token=playToken;
   // cancel any pending sleep
@@ -950,7 +963,7 @@ function seek(sec){
   userinput.disabled=true; askhint.textContent='';
 
   // wipe + rebuild
-  wrap.innerHTML='<div class="scrollback">· · ·  earlier in this conversation: 2,847 messages  · · ·</div>';
+  wrap.innerHTML=BOOT_HTML;
   const start=SEC_START[sec];
   for(let i=0;i<start;i++) renderEvent(SCRIPT[i],true,token);
   idx=start; curSection=sec;
@@ -980,10 +993,48 @@ async function run(token){
   }
 }
 
+/* =====================================================================
+   OPENING SEQUENCE — the Claude Code launch banner, then it resumes
+   ===================================================================== */
+let booting=true;
+const BANNER_HTML =
+  '<div class="bootbox">'
+  +'<div class="boot-welcome"><span class="boot-star">✻</span> Welcome to Claude Code</div>'
+  +'<div class="boot-gap"></div>'
+  +'<div class="boot-dim">Opus 4.7 · 1M context · Claude API</div>'
+  +'<div class="boot-cwd">~/Projects/nixfred.com/nixfred.com.chat</div>'
+  +'</div>';
+const RESUME_HTML =
+  '<div class="boot-resume"><span class="who">⎿  </span>resuming previous session · 2,847 messages restored</div>';
+const BOOT_HTML = BANNER_HTML + RESUME_HTML;
+
+async function boot(){
+  wrap.innerHTML = BANNER_HTML;
+  follow();
+  await sleep(780);
+  const r=document.createElement('div');
+  r.className='boot-resume';
+  wrap.appendChild(r); follow();
+  const spch=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+  let f=0, spinning=true;
+  (function tick(){
+    if(!spinning) return;
+    r.innerHTML='<span class="who">'+spch[f++%spch.length]+'  </span>resuming previous session…';
+    setTimeout(tick,90);
+  })();
+  await sleep(1180);
+  spinning=false;
+  r.innerHTML='<span class="who">⎿  </span>resuming previous session · 2,847 messages restored';
+  follow();
+  await sleep(820);
+  booting=false;
+}
+
 /* boot */
 if(document.hidden){ paused=true; pausedByBlur=true; blurStart=Date.now(); }
 (async()=>{
-  await sleep(900);
+  await sleep(420);
+  await boot();
   run(++playToken);
 })();
 </script>
